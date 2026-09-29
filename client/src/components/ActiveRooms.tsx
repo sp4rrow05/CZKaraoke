@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { RoomSummary } from '../../../shared/types.ts';
+import { apiUrl } from '../lib/config.ts';
 
 const REFRESH_MS = 5000;
 
@@ -13,7 +14,7 @@ export default function ActiveRooms({ onJoin }: { onJoin: (code: string) => void
 
     const load = async () => {
       try {
-        const res = await fetch('/api/rooms');
+        const res = await fetch(apiUrl('/api/rooms'));
         if (!res.ok) throw new Error();
         const data = await res.json();
         if (!cancelled) {

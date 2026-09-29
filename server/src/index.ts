@@ -10,12 +10,43 @@ import { registerSocketHandlers } from './socket.ts';
 import { SearchError, searchVideos } from './youtube.ts';
 
 const PORT = Number(process.env.PORT ?? 3001);
+
+/**
+ * Sites allowed to call this server from another origin (e.g. the Vercel-hosted pages).
+ * Comma-separated; "*" works as a wildcard, e.g. "https://czkaraoke.vercel.app,https://czkaraoke-*.vercel.app".
+ */
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const allowedOrigins = (process.env.CLIENT_ORIGIN ?? '')
+  .split(',')
+  .map((o) => o.trim().replace(/\/$/, ''))
+  .filter(Boolean)
+  // "*" matches within one hostname label, so "https://app-*.vercel.app" can't match "evil.com/…".
+  .map((o) => new RegExp('^' + o.split('*').map(escapeRegExp).join('[a-z0-9-]*') + '$', 'i'));
+const isAllowedOrigin = (origin: string | undefined) => !!origin && allowedOrigins.some((re) => re.test(origin));
+
 const store = new RoomStore();
 const joinLimiter = new RateLimiter(5, 10 * 60 * 1000);
 
 const app = express();
-app.set('trust proxy', 'loopback');
+// Behind a hosting proxy (Render, Railway…) set TRUST_PROXY=1 so rate limits see each visitor's real IP.
+const trustProxy = process.env.TRUST_PROXY;
+app.set('trust proxy', trustProxy ? (/^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy) : 'loopback');
 app.use(express.json({ limit: '10kb' }));
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (isAllowedOrigin(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin!);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-room, x-member, x-token');
+    res.setHeader('Access-Control-Max-Age', '600');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(isAllowedOrigin(origin) ? 204 : 403);
+  next();
+});
+
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.get('/api/rooms', (_req, res) => {
   res.json({ rooms: store.listActive().slice(0, 50) });
@@ -76,10 +107,13 @@ if (existsSync(clientDist)) {
 }
 
 const httpServer = createServer(app);
-const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer);
+const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
+  cors: { origin: (origin, cb) => cb(null, !origin || isAllowedOrigin(origin)) },
+});
 registerSocketHandlers(io, store);
 
 httpServer.listen(PORT, () => {
   console.log(`Karaoke server on http://localhost:${PORT}`);
+  if (allowedOrigins.length) console.log(`Accepting requests from: ${process.env.CLIENT_ORIGIN}`);
   if (!process.env.YOUTUBE_API_KEY) console.warn('Warning: YOUTUBE_API_KEY is not set; search will not work.');
 });

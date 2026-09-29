@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import type { Session, Video } from '../../../shared/types.ts';
+import { apiUrl } from '../lib/config.ts';
 
 interface Props {
   session: Session;
@@ -21,7 +22,7 @@ export default function SearchPanel({ session, onReserve }: Props) {
     setError('');
     try {
       const params = new URLSearchParams({ q: query, karaoke: karaoke ? '1' : '0' });
-      const res = await fetch(`/api/search?${params}`, {
+      const res = await fetch(apiUrl(`/api/search?${params}`), {
         headers: { 'x-room': session.code, 'x-member': session.memberId, 'x-token': session.token },
       });
       const data = await res.json();

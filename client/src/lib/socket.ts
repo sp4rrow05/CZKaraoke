@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import type { ClientToServerEvents, RoomState, ServerToClientEvents, Session } from '../../../shared/types.ts';
+import { apiUrl, SERVER_URL } from './config.ts';
 
 export type RoomSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -28,7 +29,7 @@ export function clearSession(code: string) {
 }
 
 export async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetch(apiUrl(url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -48,7 +49,7 @@ export function useRoom(session: Session | null) {
 
   useEffect(() => {
     if (!session) return;
-    const socket: RoomSocket = io({
+    const socket: RoomSocket = io(SERVER_URL || undefined, {
       auth: { code: session.code, memberId: session.memberId, token: session.token },
       // WebSocket first: long-polling is unreliable through tunnels and proxies. Falls back if blocked.
       transports: ['websocket', 'polling'],

@@ -38,6 +38,21 @@ npm start       # serves the API and the built client on PORT (default 3001)
 
 Rooms are kept in memory. They are lost when the server restarts, and a room is closed after 6 hours with no activity.
 
+## Deploying (pages on Vercel, server on Render)
+
+Vercel only runs short-lived functions, so it can't host the Socket.IO server. The pages go on Vercel and the server goes on Render.
+
+1. **Server on Render:** choose **New → Blueprint**, pick this repo, and Render reads `render.yaml`. When asked, fill in:
+   - `YOUTUBE_API_KEY`: your key.
+   - `CLIENT_ORIGIN`: your Vercel URL, for example `https://czkaraoke.vercel.app`. Separate several URLs with commas. `*` works as a wildcard for preview deployments, as in `https://czkaraoke-*.vercel.app`.
+
+   Check `https://<your-service>.onrender.com/api/health`. It should return `{"ok":true}`.
+2. **Pages on Vercel:** import the repo with **Root Directory** set to `client`. Under **Environment Variables**, add `VITE_SERVER_URL` set to your Render URL, for example `https://czkaraoke-server.onrender.com`. Then redeploy, because Vite bakes this setting into the build.
+
+On the free Render plan the server sleeps after 15 minutes idle. The first visit afterwards takes about 30 seconds while it wakes up, and sleeping also clears all rooms.
+
+Running only `npm start` on one host still works too: when `VITE_SERVER_URL` is empty, the pages use the same site as the server.
+
 ## Tests
 
 ```sh

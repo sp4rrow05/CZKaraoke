@@ -1,0 +1,22 @@
+# Render Blueprint for the karaoke server (Socket.IO + API).
+# The pages are hosted separately on Vercel; see README "Deploying".
+services:
+  - type: web
+    name: czkaraoke-server
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Rate limits need each visitor's real IP from Render's proxy.
+      - key: TRUST_PROXY
+        value: "1"
+      # Asked for when you create the Blueprint:
+      - key: YOUTUBE_API_KEY
+        sync: false
+      # Your Vercel URL(s), comma-separated, e.g. https://czkaraoke.vercel.app
+      - key: CLIENT_ORIGIN
+        sync: false
