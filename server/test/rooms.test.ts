@@ -96,6 +96,55 @@ describe('rooms', () => {
     expect(room.queue).toHaveLength(0);
   });
 
+  it('lets the host start any reserved song right away', () => {
+    const { store, room, host, alice, bob } = setup();
+    store.addToQueue(room, alice, video(1)); // current
+    const a2 = store.addToQueue(room, alice, video(2));
+    const b3 = store.addToQueue(room, bob, video(3));
+    const a4 = store.addToQueue(room, alice, video(4));
+    store.pause(room, alice);
+
+    expect(() => store.playNow(room, bob, b3.id)).toThrow(RoomError);
+    expect(() => store.playNow(room, host, 'gone')).toThrow(RoomError);
+
+    const before = room.playId;
+    store.playNow(room, host, b3.id);
+    expect(room.current?.id).toBe(b3.id);
+    expect(room.status).toBe('playing');
+    expect(room.playId).toBe(before + 1);
+    expect(room.queue.map((q) => q.id)).toEqual([a2.id, a4.id]); // order kept, song 1 ended
+  });
+
+  it('lets only the host hand the screen to a member', () => {
+    const { store, room, host, alice, bob } = setup();
+    expect(store.isScreen(room, host)).toBe(true);
+    expect(() => store.setScreen(room, alice, alice.id)).toThrow(RoomError);
+    expect(() => store.setScreen(room, host, 'nobody')).toThrow(RoomError);
+
+    store.setScreen(room, host, bob.id);
+    expect(store.isScreen(room, bob)).toBe(true);
+    expect(store.isScreen(room, host)).toBe(false);
+    expect(store.toState(room).screenId).toBe(bob.id);
+    expect(store.canControl(room, bob)).toBe(false); // screen alone grants no control
+  });
+
+  it('lists only rooms with someone online, without secrets', () => {
+    const { store, room, host, alice } = setup();
+    const other = store.create('Quiet', 'secret').room; // nobody connected
+    expect(store.listActive()).toEqual([]);
+
+    store.connect(room, host);
+    store.connect(room, alice);
+    store.addToQueue(room, alice, video(1));
+    const list = store.listActive();
+    expect(list).toEqual([{ code: room.code, hostName: 'Host', online: 2, members: 3, playing: true }]);
+    expect(JSON.stringify(list)).not.toContain(room.passwordHash);
+    expect(list.map((r) => r.code)).not.toContain(other.code);
+
+    store.disconnect(room, alice);
+    expect(store.listActive()[0].online).toBe(1);
+  });
+
   it('rejects invalid videos', () => {
     const { store, room, alice } = setup();
     expect(() => store.addToQueue(room, alice, { ...video(1), videoId: '<script>' })).toThrow(RoomError);

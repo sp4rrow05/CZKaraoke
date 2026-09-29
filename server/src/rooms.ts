@@ -1,4 +1,4 @@
-import type { PlayerStatus, QueueItem, RoomState, Video } from '../../shared/types.ts';
+import type { PlayerStatus, QueueItem, RoomState, RoomSummary, Video } from '../../shared/types.ts';
 import {
   generateId,
   generateRoomCode,
@@ -20,6 +20,7 @@ export interface Room {
   code: string;
   passwordHash: string;
   hostId: string;
+  screenId: string;
   members: Map<string, Member>;
   queue: QueueItem[];
   current: QueueItem | null;
@@ -71,6 +72,7 @@ export class RoomStore {
       code,
       passwordHash: hashPassword(password),
       hostId: member.id,
+      screenId: member.id,
       members: new Map([[member.id, member]]),
       queue: [],
       current: null,
@@ -155,6 +157,33 @@ export class RoomStore {
     this.touch(room);
   }
 
+  playNow(room: Room, member: Member, itemId: string): QueueItem {
+    if (!member.isHost) throw new RoomError('Only the host can choose what plays next.');
+    const index = room.queue.findIndex((q) => q.id === itemId);
+    if (index === -1) throw new RoomError('That song is no longer in the queue.');
+    const [item] = room.queue.splice(index, 1);
+    room.current = item;
+    room.status = 'playing';
+    room.playId++;
+    this.touch(room);
+    return item;
+  }
+
+  // --- screen ---
+
+  isScreen(room: Room, member: Member): boolean {
+    return room.screenId === member.id;
+  }
+
+  setScreen(room: Room, member: Member, targetId: string): Member {
+    if (!member.isHost) throw new RoomError('Only the host can choose the screen.');
+    const target = room.members.get(targetId);
+    if (!target) throw new RoomError('That person is not in the room.');
+    room.screenId = target.id;
+    this.touch(room);
+    return target;
+  }
+
   // --- player ---
 
   play(room: Room, member: Member): void {
@@ -225,10 +254,29 @@ export class RoomStore {
     return removed;
   }
 
+  /** Rooms with at least one person connected, busiest first. */
+  listActive(): RoomSummary[] {
+    const list: RoomSummary[] = [];
+    for (const room of this.rooms.values()) {
+      const members = [...room.members.values()];
+      const online = members.filter((m) => m.connections > 0).length;
+      if (!online) continue;
+      list.push({
+        code: room.code,
+        hostName: room.members.get(room.hostId)?.nickname ?? '',
+        online,
+        members: members.length,
+        playing: room.current !== null && room.status === 'playing',
+      });
+    }
+    return list.sort((a, b) => b.online - a.online || a.code.localeCompare(b.code));
+  }
+
   toState(room: Room): RoomState {
     return {
       code: room.code,
       hostId: room.hostId,
+      screenId: room.screenId,
       members: [...room.members.values()].map((m) => ({
         id: m.id,
         nickname: m.nickname,

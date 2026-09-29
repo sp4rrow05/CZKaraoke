@@ -35,12 +35,18 @@ export default function SearchPanel({ session, onReserve }: Props) {
     }
   };
 
+  const [pending, setPending] = useState<string | null>(null);
+
   const reserve = async (video: Video) => {
+    setPending(video.videoId);
+    setError('');
     try {
       await onReserve(video);
       setReserved((s) => new Set(s).add(video.videoId));
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setPending(null);
     }
   };
 
@@ -74,8 +80,12 @@ export default function SearchPanel({ session, onReserve }: Props) {
                 {v.channel} · {v.duration}
               </span>
             </div>
-            <button onClick={() => reserve(v)} className={reserved.has(v.videoId) ? '' : 'primary'}>
-              {reserved.has(v.videoId) ? 'Reserved ✓' : 'Reserve'}
+            <button
+              onClick={() => reserve(v)}
+              disabled={pending === v.videoId}
+              className={reserved.has(v.videoId) ? '' : 'primary'}
+            >
+              {pending === v.videoId ? 'Reserving…' : reserved.has(v.videoId) ? 'Reserved ✓' : 'Reserve'}
             </button>
           </li>
         ))}

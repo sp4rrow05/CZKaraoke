@@ -50,6 +50,9 @@ export function useRoom(session: Session | null) {
     if (!session) return;
     const socket: RoomSocket = io({
       auth: { code: session.code, memberId: session.memberId, token: session.token },
+      // WebSocket first: long-polling is unreliable through tunnels and proxies. Falls back if blocked.
+      transports: ['websocket', 'polling'],
+      tryAllTransports: true,
     });
     socketRef.current = socket;
 
@@ -76,10 +79,12 @@ export function useRoom(session: Session | null) {
   const send = (event: Exclude<keyof ClientToServerEvents, 'player:ended'>, ...args: unknown[]) =>
     new Promise<void>((resolve, reject) => {
       const socket = socketRef.current;
-      if (!socket?.connected) return reject(new Error('Not connected.'));
-      (socket.emit as any)(event, ...args, (res: { ok: boolean; error?: string }) =>
-        res.ok ? resolve() : reject(new Error(res.error)),
-      );
+      if (!socket?.connected) return reject(new Error('Not connected to the room. Check your connection.'));
+      (socket.timeout(8000).emit as any)(event, ...args, (err: Error | null, res: { ok: boolean; error?: string }) => {
+        if (err) reject(new Error('The server did not respond. Check your connection and try again.'));
+        else if (res.ok) resolve();
+        else reject(new Error(res.error));
+      });
     });
 
   return { state, status, send, socket: socketRef };

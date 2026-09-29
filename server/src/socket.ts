@@ -17,7 +17,10 @@ export function registerSocketHandlers(io: IO, store: RoomStore) {
   io.use((socket, next) => {
     const { code, memberId, token } = socket.handshake.auth ?? {};
     const auth = store.authenticate(code, memberId, token);
-    if (!auth) return next(new Error('unauthorized'));
+    if (!auth) {
+      console.log(`[socket] rejected connection for room ${code} (unknown room or bad token)`);
+      return next(new Error('unauthorized'));
+    }
     socket.data = { code: auth.room.code, memberId: auth.member.id };
     next();
   });
@@ -50,13 +53,29 @@ export function registerSocketHandlers(io: IO, store: RoomStore) {
       };
 
     const { room, member } = context();
+    const log = (msg: string) => console.log(`[${room.code}] ${member.nickname}: ${msg}`);
+    log(`connected via ${socket.conn.transport.name}`);
+    socket.conn.once('upgrade', () => log(`upgraded to ${socket.conn.transport.name}`));
     socket.join(room.code);
     store.connect(room, member);
     broadcast(room);
 
-    socket.on('queue:add', handle((r, m, video) => void store.addToQueue(r, m, video)));
+    socket.on(
+      'queue:add',
+      handle((r, m, video) => {
+        const item = store.addToQueue(r, m, video);
+        log(`reserved "${item.title}"`);
+      }),
+    );
     socket.on('queue:remove', handle((r, m, itemId: string) => store.removeFromQueue(r, m, itemId)));
     socket.on('queue:move', handle((r, m, itemId: string, dir: -1 | 1) => store.moveInQueue(r, m, itemId, dir)));
+    socket.on(
+      'queue:playNow',
+      handle((r, m, itemId: string) => {
+        const item = store.playNow(r, m, itemId);
+        log(`started "${item.title}" now`);
+      }),
+    );
     socket.on('player:play', handle((r, m) => store.play(r, m)));
     socket.on('player:pause', handle((r, m) => store.pause(r, m)));
     socket.on('player:stop', handle((r, m) => store.stop(r, m)));
@@ -65,10 +84,19 @@ export function registerSocketHandlers(io: IO, store: RoomStore) {
     socket.on('player:ended', (playId) => {
       const r = store.get(socket.data.code);
       const m = r?.members.get(socket.data.memberId);
-      if (r && m?.isHost && store.ended(r, playId)) broadcast(r);
+      if (r && m && store.isScreen(r, m) && store.ended(r, playId)) broadcast(r);
     });
 
-    socket.on('disconnect', () => {
+    socket.on(
+      'room:setScreen',
+      handle((r, m, targetId: string) => {
+        const target = store.setScreen(r, m, targetId);
+        log(`made ${target.nickname} the screen`);
+      }),
+    );
+
+    socket.on('disconnect', (reason) => {
+      log(`disconnected (${reason})`);
       const r = store.get(socket.data.code);
       const m = r?.members.get(socket.data.memberId);
       if (!r || !m) return;
