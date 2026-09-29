@@ -17,6 +17,10 @@ const app = express();
 app.set('trust proxy', 'loopback');
 app.use(express.json({ limit: '10kb' }));
 
+app.get('/api/rooms', (_req, res) => {
+  res.json({ rooms: store.listActive().slice(0, 50) });
+});
+
 app.post('/api/rooms', (req, res) => {
   try {
     const { room, member } = store.create(req.body?.nickname, req.body?.password);

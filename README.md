@@ -26,7 +26,8 @@ To let phones join, open the app with your computer's LAN address (for example `
 2. The host clicks **📺 Open host screen** on the TV or laptop, then clicks once to allow sound.
 3. Guests join with the room code and password, or by scanning the QR code on the host screen.
 4. Anyone can **search** YouTube (karaoke versions by default) and **reserve** songs. The first reserved song starts right away, and the next one plays automatically when a song ends.
-5. **Play, pause, stop and next** are allowed for the host and for the person who reserved the current song. Guests can remove their own reserved songs. The host can remove or reorder any song.
+5. **Move the screen:** in the **People** panel, the host can press **Make screen** next to anyone who is online. That person gets an **📺 Open screen** button, and the old screen stops playing. Being the screen doesn't give extra control.
+6. **Play, pause, stop and next** are allowed for the host and for the person who reserved the current song. Guests can remove their own reserved songs. The host can remove or reorder any song.
 
 ## Production
 

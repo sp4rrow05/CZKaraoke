@@ -6,9 +6,10 @@ interface Props {
   isHost: boolean;
   onRemove: (itemId: string) => void;
   onMove: (itemId: string, dir: -1 | 1) => void;
+  onPlayNow: (itemId: string) => void;
 }
 
-export default function QueueList({ state, memberId, isHost, onRemove, onMove }: Props) {
+export default function QueueList({ state, memberId, isHost, onRemove, onMove, onPlayNow }: Props) {
   const { queue } = state;
   return (
     <section className="card">
@@ -16,7 +17,7 @@ export default function QueueList({ state, memberId, isHost, onRemove, onMove }:
       {!queue.length && <p className="muted">No songs reserved yet.</p>}
       <ol className="queue">
         {queue.map((item, i) => (
-          <li key={item.id} className={`song-row ${item.reservedBy === memberId ? 'mine' : ''}`}>
+          <li key={item.id} className={`song-row${item.reservedBy === memberId ? ' mine' : ''}${isHost ? ' with-actions' : ''}`}>
             <span className="queue-num">{i + 1}</span>
             <img src={item.thumbnail} alt="" loading="lazy" />
             <div className="song-info">
@@ -28,6 +29,9 @@ export default function QueueList({ state, memberId, isHost, onRemove, onMove }:
             <div className="row-actions">
               {isHost && (
                 <>
+                  <button className="primary play-now" onClick={() => onPlayNow(item.id)} title="Play this song now">
+                    ▶ Play now
+                  </button>
                   <button disabled={i === 0} onClick={() => onMove(item.id, -1)} title="Move up">
                     ↑
                   </button>
