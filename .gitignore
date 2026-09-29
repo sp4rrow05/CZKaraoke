@@ -1,3 +1,6 @@
 node_modules
 dist
 .env
+
+# Personal secrets: keep out of Git
+recovery-codes.txt
