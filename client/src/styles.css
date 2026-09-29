@@ -209,7 +209,7 @@ input:focus { outline: 2px solid var(--accent-text); outline-offset: 1px; }
   position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background: radial-gradient(ellipse at 50% -10%, #132544 0%, var(--bg) 60%);
 }
-.home { position: relative; z-index: 1; }
+.home, .remote, .center-screen { position: relative; z-index: 1; }
 /* Let the particles show through the cards a little. */
-.home .card { background: rgb(22 27 34 / 0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border: 1px solid rgb(110 168 254 / 0.08); }
+.home .card, .remote .card { background: rgb(22 27 34 / 0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border: 1px solid rgb(110 168 254 / 0.08); }
 .home .hero h1 { text-shadow: 0 0 32px rgb(59 130 246 / 0.45); }
