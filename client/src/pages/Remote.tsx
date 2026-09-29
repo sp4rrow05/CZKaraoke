@@ -4,6 +4,7 @@ import type { Session, Video } from '../../../shared/types.ts';
 import { JoinRoomForm } from '../components/RoomForms.tsx';
 import MembersList from '../components/MembersList.tsx';
 import NowPlaying from '../components/NowPlaying.tsx';
+import ParticleBackground from '../components/ParticleBackground.tsx';
 import PlayerControls from '../components/PlayerControls.tsx';
 import QueueList from '../components/QueueList.tsx';
 import SearchPanel from '../components/SearchPanel.tsx';
@@ -13,17 +14,22 @@ export default function Remote() {
   const code = useParams().code!.toUpperCase();
   const [session, setSession] = useState<Session | null>(() => loadSession(code));
 
-  if (!session) {
-    return (
-      <main className="home">
-        <JoinRoomForm initialCode={code} onDone={setSession} />
-        <p className="center">
-          <Link to="/">← Back</Link>
-        </p>
-      </main>
-    );
-  }
-  return <RoomView session={session} onLeave={() => setSession(null)} />;
+  // One background for the whole page, so it doesn't restart when switching from joining to the room.
+  return (
+    <>
+      <ParticleBackground />
+      {session ? (
+        <RoomView session={session} onLeave={() => setSession(null)} />
+      ) : (
+        <main className="home">
+          <JoinRoomForm initialCode={code} onDone={setSession} />
+          <p className="center">
+            <Link to="/">← Back</Link>
+          </p>
+        </main>
+      )}
+    </>
+  );
 }
 
 function RoomView({ session, onLeave }: { session: Session; onLeave: () => void }) {
