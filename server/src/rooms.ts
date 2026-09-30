@@ -19,6 +19,8 @@ export interface Member {
 export interface Room {
   code: string;
   passwordHash: string;
+  /** Secret key inside the room's QR code: lets people join without the password. */
+  inviteToken: string;
   hostId: string;
   screenId: string;
   members: Map<string, Member>;
@@ -71,6 +73,7 @@ export class RoomStore {
     const room: Room = {
       code,
       passwordHash: hashPassword(password),
+      inviteToken: generateToken(),
       hostId: member.id,
       screenId: member.id,
       members: new Map([[member.id, member]]),
@@ -88,13 +91,22 @@ export class RoomStore {
     return this.rooms.get(code.toUpperCase());
   }
 
-  /** Returns null when the room doesn't exist or the password is wrong. */
-  join(code: unknown, nickname: unknown, password: unknown): { room: Room; member: Member } | null {
+  /**
+   * Joins with either the room password or the invite key from the room's QR code.
+   * Returns null when the room doesn't exist or neither credential is valid.
+   */
+  join(
+    code: unknown,
+    nickname: unknown,
+    password: unknown,
+    invite?: unknown,
+  ): { room: Room; member: Member } | null {
     const name = cleanNickname(nickname);
     const room = typeof code === 'string' ? this.get(code) : undefined;
-    if (!room || typeof password !== 'string' || !verifyPassword(password, room.passwordHash)) {
-      return null;
-    }
+    if (!room) return null;
+    const inviteOk = typeof invite === 'string' && invite.length > 0 && safeEqual(invite, room.inviteToken);
+    const passwordOk = !inviteOk && typeof password === 'string' && verifyPassword(password, room.passwordHash);
+    if (!inviteOk && !passwordOk) return null;
     const member = this.newMember(name, false);
     room.members.set(member.id, member);
     this.touch(room);
@@ -157,11 +169,31 @@ export class RoomStore {
     this.touch(room);
   }
 
-  playNow(room: Room, member: Member, itemId: string): QueueItem {
-    if (!member.isHost) throw new RoomError('Only the host can choose what plays next.');
+  /** The host, or whoever runs the screen, can pick which reserved song plays next or now. */
+  private requirePicker(room: Room, member: Member) {
+    if (!member.isHost && !this.isScreen(room, member)) {
+      throw new RoomError('Only the host or the screen can choose what plays next.');
+    }
+  }
+
+  private queueIndex(room: Room, itemId: string): number {
     const index = room.queue.findIndex((q) => q.id === itemId);
     if (index === -1) throw new RoomError('That song is no longer in the queue.');
-    const [item] = room.queue.splice(index, 1);
+    return index;
+  }
+
+  /** Moves a reserved song to the front of the queue; the current song keeps playing. */
+  playNext(room: Room, member: Member, itemId: string): QueueItem {
+    this.requirePicker(room, member);
+    const [item] = room.queue.splice(this.queueIndex(room, itemId), 1);
+    room.queue.unshift(item);
+    this.touch(room);
+    return item;
+  }
+
+  playNow(room: Room, member: Member, itemId: string): QueueItem {
+    this.requirePicker(room, member);
+    const [item] = room.queue.splice(this.queueIndex(room, itemId), 1);
     room.current = item;
     room.status = 'playing';
     room.playId++;
@@ -242,6 +274,19 @@ export class RoomStore {
     member.connections = Math.max(0, member.connections - 1);
   }
 
+  /** Host only: makes a new QR invite key; the old QR code stops working. */
+  resetInvite(room: Room, member: Member): void {
+    if (!member.isHost) throw new RoomError('Only the host can make a new QR code.');
+    room.inviteToken = generateToken();
+    this.touch(room);
+  }
+
+  /** Host only: deletes the room. */
+  close(room: Room, member: Member): void {
+    if (!member.isHost) throw new RoomError('Only the host can close the room.');
+    this.rooms.delete(room.code);
+  }
+
   /** Removes rooms idle for longer than the TTL. Returns the removed codes. */
   sweep(now = Date.now()): string[] {
     const removed: string[] = [];
@@ -277,6 +322,7 @@ export class RoomStore {
       code: room.code,
       hostId: room.hostId,
       screenId: room.screenId,
+      inviteToken: room.inviteToken,
       members: [...room.members.values()].map((m) => ({
         id: m.id,
         nickname: m.nickname,

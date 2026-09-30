@@ -1,5 +1,7 @@
 // Types shared by server and client. Type-only: no runtime code here.
 
+export type RoomClosedReason = 'host' | 'idle';
+
 export type PlayerStatus = 'playing' | 'paused' | 'stopped';
 
 export interface Video {
@@ -23,12 +25,14 @@ export interface PublicMember {
   online: boolean;
 }
 
-/** Room state as broadcast to clients (no secrets). */
+/** Room state as broadcast to the room's members. Never includes the password; see inviteToken. */
 export interface RoomState {
   code: string;
   hostId: string;
   /** Member whose device plays the videos (the host by default). */
   screenId: string;
+  /** Key for the QR code's join link (members only; never listed publicly). */
+  inviteToken: string;
   members: PublicMember[];
   queue: QueueItem[];
   current: QueueItem | null;
@@ -59,19 +63,25 @@ export interface ClientToServerEvents {
   'queue:add': (video: Video, ack?: Ack) => void;
   'queue:remove': (itemId: string, ack?: Ack) => void;
   'queue:move': (itemId: string, dir: -1 | 1, ack?: Ack) => void;
-  /** Host only: start this reserved song right away, ending the current one. */
+  /** Host or screen: start this reserved song right away, ending the current one. */
   'queue:playNow': (itemId: string, ack?: Ack) => void;
+  /** Host or screen: move this reserved song to the front of the queue. */
+  'queue:playNext': (itemId: string, ack?: Ack) => void;
   'player:play': (ack?: Ack) => void;
   'player:pause': (ack?: Ack) => void;
   'player:stop': (ack?: Ack) => void;
   'player:next': (ack?: Ack) => void;
   /** Host only: choose which member's device plays the videos. */
   'room:setScreen': (memberId: string, ack?: Ack) => void;
+  /** Host only: replace the QR invite key, so old QR codes stop working. */
+  'room:resetInvite': (ack?: Ack) => void;
+  /** Host only: end the room for everyone. */
+  'room:close': (ack?: Ack) => void;
   /** Sent by the host screen when a video ends or fails to play. */
   'player:ended': (playId: number) => void;
 }
 
 export interface ServerToClientEvents {
   'room:state': (state: RoomState) => void;
-  'room:closed': () => void;
+  'room:closed': (reason: RoomClosedReason) => void;
 }

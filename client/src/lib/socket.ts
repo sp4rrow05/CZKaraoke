@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import type { ClientToServerEvents, RoomState, ServerToClientEvents, Session } from '../../../shared/types.ts';
+import type {
+  ClientToServerEvents,
+  RoomClosedReason,
+  RoomState,
+  ServerToClientEvents,
+  Session,
+} from '../../../shared/types.ts';
 import { apiUrl, SERVER_URL } from './config.ts';
 
 export type RoomSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -45,6 +51,7 @@ export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'un
 export function useRoom(session: Session | null) {
   const [state, setState] = useState<RoomState | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
+  const [closedReason, setClosedReason] = useState<RoomClosedReason | null>(null);
   const socketRef = useRef<RoomSocket | null>(null);
 
   useEffect(() => {
@@ -58,7 +65,8 @@ export function useRoom(session: Session | null) {
     socketRef.current = socket;
 
     socket.on('connect', () => setStatus('connected'));
-    socket.on('disconnect', () => setStatus('reconnecting'));
+    // Once the room is closed the server drops the connection; don't show that as "reconnecting".
+    socket.on('disconnect', () => setStatus((s) => (s === 'closed' ? s : 'reconnecting')));
     socket.on('connect_error', (err) => {
       if (err.message === 'unauthorized') {
         setStatus('unauthorized');
@@ -68,7 +76,11 @@ export function useRoom(session: Session | null) {
       }
     });
     socket.on('room:state', setState);
-    socket.on('room:closed', () => setStatus('closed'));
+    socket.on('room:closed', (reason) => {
+      setClosedReason(reason);
+      setStatus('closed');
+      clearSession(session.code);
+    });
 
     return () => {
       socket.disconnect();
@@ -88,5 +100,5 @@ export function useRoom(session: Session | null) {
       });
     });
 
-  return { state, status, send, socket: socketRef };
+  return { state, status, closedReason, send, socket: socketRef };
 }

@@ -76,6 +76,13 @@ export function registerSocketHandlers(io: IO, store: RoomStore) {
         log(`started "${item.title}" now`);
       }),
     );
+    socket.on(
+      'queue:playNext',
+      handle((r, m, itemId: string) => {
+        const item = store.playNext(r, m, itemId);
+        log(`moved "${item.title}" to play next`);
+      }),
+    );
     socket.on('player:play', handle((r, m) => store.play(r, m)));
     socket.on('player:pause', handle((r, m) => store.pause(r, m)));
     socket.on('player:stop', handle((r, m) => store.stop(r, m)));
@@ -95,6 +102,27 @@ export function registerSocketHandlers(io: IO, store: RoomStore) {
       }),
     );
 
+    socket.on(
+      'room:resetInvite',
+      handle((r, m) => {
+        store.resetInvite(r, m);
+        log('made a new QR code');
+      }),
+    );
+
+    socket.on('room:close', (ack?: Ack) => {
+      try {
+        const { room: r, member: m } = context();
+        store.close(r, m);
+        log('closed the room');
+        ack?.({ ok: true });
+        io.to(r.code).emit('room:closed', 'host');
+        io.in(r.code).disconnectSockets(true);
+      } catch (err) {
+        ack?.({ ok: false, error: err instanceof RoomError ? err.message : 'Something went wrong.' });
+      }
+    });
+
     socket.on('disconnect', (reason) => {
       log(`disconnected (${reason})`);
       const r = store.get(socket.data.code);
@@ -108,7 +136,7 @@ export function registerSocketHandlers(io: IO, store: RoomStore) {
   // Close idle rooms.
   setInterval(() => {
     for (const code of store.sweep()) {
-      io.to(code).emit('room:closed');
+      io.to(code).emit('room:closed', 'idle');
       io.in(code).disconnectSockets(true);
     }
   }, 10 * 60 * 1000).unref();
