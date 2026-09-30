@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
+import Logo from '../components/Logo.tsx';
+import NewQrButton from '../components/NewQrButton.tsx';
 import ScreenPlayer from '../components/ScreenPlayer.tsx';
+import ScreenQueue from '../components/ScreenQueue.tsx';
 import { useFullscreen, useIdle } from '../lib/fullscreen.ts';
+import { inviteUrl } from '../lib/invite.ts';
 import { loadSession, useRoom } from '../lib/socket.ts';
 import { useWakeLock } from '../lib/wakeLock.ts';
 
 export default function HostScreen() {
   const code = useParams().code!.toUpperCase();
   const [session] = useState(() => loadSession(code));
-  const { state, status, socket } = useRoom(session);
+  const { state, status, closedReason, socket, send } = useRoom(session);
 
   const [unlocked, setUnlocked] = useState(false);
   const isScreen = !!state && !!session && state.screenId === session.memberId;
@@ -47,8 +51,17 @@ export default function HostScreen() {
   if (status === 'unauthorized' || status === 'closed') {
     return (
       <main className="center-screen">
-        <p>This room is no longer available.</p>
-        <Link to="/">Home</Link>
+        <h2>🎤 This room has been closed</h2>
+        <p className="muted">
+          {closedReason === 'host'
+            ? 'The host ended the room. Thanks for singing!'
+            : closedReason === 'idle'
+              ? 'It was closed after a long time without activity.'
+              : 'This room is no longer available.'}
+        </p>
+        <Link className="button primary-link" to="/">
+          Back to home
+        </Link>
       </main>
     );
   }
@@ -65,7 +78,8 @@ export default function HostScreen() {
     );
   }
 
-  const joinUrl = `${location.origin}/room/${state.code}`;
+  const joinUrl = inviteUrl(state.code, state.inviteToken);
+  const isHost = state.hostId === session.memberId;
 
   return (
     <main className="host-screen-layout">
@@ -78,7 +92,9 @@ export default function HostScreen() {
         <div className="stage-shield" onDoubleClick={toggleFullscreen} />
         {!state.current && (
           <div className="stage-idle">
-            <h1>🎤 Karaoke</h1>
+            <h1 className="stage-logo">
+              <Logo width={420} />
+            </h1>
             <p>Scan the code or go to the room page to reserve a song.</p>
           </div>
         )}
@@ -127,9 +143,10 @@ export default function HostScreen() {
           <div>
             <span className="muted small">Room code</span>
             <div className="room-code big">{state.code}</div>
-            <span className="muted small">Password required</span>
+            <span className="muted small">Scan to join, no password needed</span>
           </div>
         </div>
+        {isHost && <NewQrButton onReset={() => send('room:resetInvite')} />}
         {state.current && (
           <div className="screen-now">
             <span className="muted small">Now singing</span>
@@ -138,16 +155,11 @@ export default function HostScreen() {
           </div>
         )}
         <h3>Up next</h3>
-        <ol className="screen-queue">
-          {state.queue.slice(0, 8).map((q) => (
-            <li key={q.id}>
-              <strong>{q.title}</strong>
-              <span className="muted">🎤 {q.reservedByName}</span>
-            </li>
-          ))}
-          {!state.queue.length && <li className="muted">No reservations</li>}
-          {state.queue.length > 8 && <li className="muted">+{state.queue.length - 8} more</li>}
-        </ol>
+        <ScreenQueue
+          queue={state.queue}
+          onPlayNext={(id) => send('queue:playNext', id)}
+          onPlayNow={(id) => send('queue:playNow', id)}
+        />
         {status !== 'connected' && <span className="badge paused">Reconnecting…</span>}
         {wakeLock === 'on' && <p className="muted small">☀ Screen will stay on while this page is open.</p>}
         {wakeLockProblem && <p className="wake-warn small">⚠ {wakeLockProblem}</p>}

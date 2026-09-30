@@ -115,6 +115,35 @@ describe('rooms', () => {
     expect(room.queue.map((q) => q.id)).toEqual([a2.id, a4.id]); // order kept, song 1 ended
   });
 
+  it('lets the host or the screen pick the next song', () => {
+    const { store, room, host, alice, bob } = setup();
+    store.addToQueue(room, alice, video(1)); // current
+    const a2 = store.addToQueue(room, alice, video(2));
+    const b3 = store.addToQueue(room, bob, video(3));
+    const a4 = store.addToQueue(room, alice, video(4));
+    const playId = room.playId;
+
+    expect(() => store.playNext(room, bob, a4.id)).toThrow(RoomError); // neither host nor screen
+
+    store.playNext(room, host, a4.id);
+    expect(room.queue.map((q) => q.id)).toEqual([a4.id, a2.id, b3.id]);
+    expect(room.current?.title).toBe('Song 1'); // current song keeps playing
+    expect(room.playId).toBe(playId);
+
+    // A guest running the screen can pick too, both "next" and "now".
+    store.setScreen(room, host, bob.id);
+    store.playNext(room, bob, b3.id);
+    expect(room.queue.map((q) => q.id)).toEqual([b3.id, a4.id, a2.id]);
+    store.playNow(room, bob, a2.id);
+    expect(room.current?.id).toBe(a2.id);
+    expect(room.queue.map((q) => q.id)).toEqual([b3.id, a4.id]);
+
+    // Once the screen moves away, that guest can't pick any more.
+    store.setScreen(room, host, host.id);
+    expect(() => store.playNow(room, bob, b3.id)).toThrow(RoomError);
+    expect(() => store.playNext(room, host, 'gone')).toThrow(RoomError);
+  });
+
   it('lets only the host hand the screen to a member', () => {
     const { store, room, host, alice, bob } = setup();
     expect(store.isScreen(room, host)).toBe(true);
@@ -139,10 +168,39 @@ describe('rooms', () => {
     const list = store.listActive();
     expect(list).toEqual([{ code: room.code, hostName: 'Host', online: 2, members: 3, playing: true }]);
     expect(JSON.stringify(list)).not.toContain(room.passwordHash);
+    expect(JSON.stringify(list)).not.toContain(room.inviteToken);
     expect(list.map((r) => r.code)).not.toContain(other.code);
 
     store.disconnect(room, alice);
     expect(store.listActive()[0].online).toBe(1);
+  });
+
+  it('joins with the QR invite key instead of the password', () => {
+    const { store, room, host, alice } = setup();
+    const invite = store.toState(room).inviteToken;
+    expect(invite.length).toBeGreaterThanOrEqual(32);
+
+    expect(store.join(room.code, 'Qr', undefined, invite)?.member.nickname).toBe('Qr');
+    expect(store.join(room.code, 'Bad', undefined, 'not-the-key')).toBeNull();
+    expect(store.join(room.code, 'Empty', '', '')).toBeNull();
+    expect(store.join('NOPE00', 'Other', undefined, invite)).toBeNull(); // key only works for its own room
+    expect(store.join(room.code, 'Pw', 'secret', 'wrong-key')?.member.nickname).toBe('Pw'); // password still works
+
+    expect(() => store.resetInvite(room, alice)).toThrow(RoomError);
+    store.resetInvite(room, host);
+    expect(store.toState(room).inviteToken).not.toBe(invite);
+    expect(store.join(room.code, 'Old', undefined, invite)).toBeNull(); // old QR stops working
+  });
+
+  it('lets only the host close the room', () => {
+    const { store, room, host, alice } = setup();
+    expect(() => store.close(room, alice)).toThrow(RoomError);
+    expect(store.get(room.code)).toBe(room);
+
+    store.close(room, host);
+    expect(store.get(room.code)).toBeUndefined();
+    expect(store.authenticate(room.code, alice.id, alice.token)).toBeNull();
+    expect(store.join(room.code, 'Late', 'secret')).toBeNull();
   });
 
   it('rejects invalid videos', () => {

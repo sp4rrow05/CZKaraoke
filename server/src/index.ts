@@ -69,10 +69,14 @@ app.post('/api/rooms/:code/join', (req, res) => {
     return res.status(429).json({ error: 'Too many failed attempts. Try again in a few minutes.' });
   }
   try {
-    const result = store.join(code, req.body?.nickname, req.body?.password);
+    const invite = req.body?.invite;
+    const result = store.join(code, req.body?.nickname, req.body?.password, invite);
     if (!result) {
       joinLimiter.fail(limitKey);
-      return res.status(401).json({ error: 'Wrong room code or password.' });
+      const error = invite
+        ? 'This QR code no longer works. Ask the host to show the new one, or join with the room code and password.'
+        : 'Wrong room code or password.';
+      return res.status(401).json({ error });
     }
     joinLimiter.reset(limitKey);
     const { room, member } = result;
